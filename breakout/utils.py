@@ -25,11 +25,11 @@ class Vector():
 
     def getTFromX(self, x):
         # Get t from x pos
-        return self.x.getT(x)
+        return abs(self.x.getT(x))
     
     def getTFromY(self, y):
         # Get t from y pos
-        return self.y.getT(y)
+        return abs(self.y.getT(y))
 
     def getY(self, x):
         # Get y pos from x pos
