@@ -1,10 +1,12 @@
 import numpy as np
-import copy
 from abc import ABC, abstractmethod
 from utils import Parametric, Vector
 
 class BreakoutEnv(ABC):
     def __init__(self):
+        self.init()
+        
+    def init(self):
         # State variables
         self.grid = np.zeros((7, 8))    # Grid of blocks
         self.x = 0                      # x position of shooter at bottom of screen
@@ -59,7 +61,9 @@ class BreakoutEnv(ABC):
         t = -1
         x = 0
 
-        while (len(vectors) > 0):
+        i = 0
+
+        while (len(vectors) > 0 and i < 1000):
             # toRemove is added to when the vector hits the ground or does a complete bounce
             # Complete bounce is when a vector hits a wall or a block with points >= vector balls
             toRemove = []
@@ -90,14 +94,17 @@ class BreakoutEnv(ABC):
 
             for idx in toRemove:
                 del vectors[idx]
+
+            i += 1
         
         self.x = x
 
-    def nextCollision(self, vector):
+    def nextCollision(self, vector, mutate=True, debug=False):
         # For a given vector on the current state, determine nearest collision and mutate state
         toRet = None
         t = -1
         min_coords = None
+        at = None
 
         # Iterate over every block in the grid
         for x in range(7):
@@ -135,36 +142,60 @@ class BreakoutEnv(ABC):
                 if (max_y <= vector.y.base and vector.y.slope >= 0):
                     possible = False
 
+                exposed_x = True
+                if (vector.x.slope >= 0 and (x == 0 or self.grid[x - 1][y + 1] != 0)):
+                    exposed_x = False
+                if (vector.x.slope <= 0 and (x == 6 or self.grid[x + 1][y + 1] != 0)):
+                    exposed_x = False
+
+                exposed_y = True
+                if (vector.y.slope >= 0 and (y == 0 or self.grid[x][y] != 0)):
+                    exposed_y = False
+                if (vector.y.slope <= 0 and (y != 6 and self.grid[x][y + 2] != 0)):
+                    exposed_y = False
+
                 # If collision detected, only update if occurs sooner than currently tracked collision
-                if (possible and hit_x >= min_x and hit_x <= max_x):
-                    new_t = vector.getTFromX(h_line)
+                if (possible and exposed_y and hit_x >= min_x and hit_x <= max_x):
+                    new_t = vector.getDist((hit_x, h_line))
+                    if (debug):
+                        print("Candidate: ", (x, y+1), " t: ", new_t)
                     if (t <= 0 or t > new_t):
                         t = new_t
                         min_coords = (x, y+1)
-                        toRet = copy.deepcopy(vector)
+                        toRet = vector.clone()
                         toRet.bounceY(h_line)
                         toRet.rebaseX(hit_x)
+                        at = (hit_x, h_line)
 
-                if (possible and hit_y >= min_y and hit_y <= max_y):
-                    new_t = vector.getTFromY(v_line)
+                if (possible and exposed_x and hit_y >= min_y and hit_y <= max_y):
+                    new_t = vector.getDist((v_line, hit_y))
+                    if (debug):
+                        print("Candidate: ", (x, y+1), " t: ", new_t)
                     if (t <= 0 or t > new_t):
                         t = new_t
                         min_coords = (x, y+1)
-                        toRet = copy.deepcopy(vector)
+                        toRet = vector.clone()
                         toRet.bounceX(v_line)
                         toRet.rebaseY(hit_y)
+                        at = (v_line, hit_y)
 
         # Mutate state and return if collision found
         if (t > 0):
-            toRet.src_t += t
-            vector.src_t += t
-            toRet.balls = min(vector.balls, int(self.grid[min_coords[0]][min_coords[1]]))
-            self.grid[min_coords[0]][min_coords[1]] -= toRet.balls
-            self.blocksHit += toRet.balls
-            min_x = min_coords[0] / 3.5 - 1
-            max_x = (min_coords[0] + 1) / 3.5 - 1
-            min_y = min_coords[1] / 3.5
-            max_y = (min_coords[1] + 1) / 3.5
+            if (mutate):
+                toRet.src_t += t
+                vector.src_t += t
+                toRet.balls = min(vector.balls, int(self.grid[min_coords[0]][min_coords[1]]))
+                self.grid[min_coords[0]][min_coords[1]] -= toRet.balls
+                self.blocksHit += toRet.balls
+                min_x = min_coords[0] / 3.5 - 1
+                max_x = (min_coords[0] + 1) / 3.5 - 1
+                min_y = min_coords[1] / 3.5
+                max_y = (min_coords[1] + 1) / 3.5
+            if (debug):
+                vector.print()
+                print("Hit: ", min_coords, " at: ", at)
+                toRet.print()
+
             return toRet, False
 
         # Repeat vertical and horizontal line checks with boundaries of game
@@ -176,13 +207,22 @@ class BreakoutEnv(ABC):
         if (hit_x >= -1 and hit_x <= 1):
             # If vector moving downwards, ground is hit
             if (vector.y.slope > 0):
-                toRet = copy.deepcopy(vector)
-                toRet.src_t += vector.getTFromX(hit_x)
+                toRet = vector.clone()
+                toRet.src_t += abs(vector.getTFromX(hit_x))
                 toRet.bounceY(h_line)
                 toRet.rebaseX(hit_x)
+                vector.src_t = toRet.src_t
+                if (debug):
+                    vector.print()
+                    print("Hit: roof at: ", (hit_x, h_line))
+                    toRet.print()
+                return toRet, False
             else:
-                vector.src_t = vector.getTFromX(hit_x)
+                vector.src_t = abs(vector.getTFromX(hit_x))
                 vector.contact_x = hit_x
+                if (debug):
+                    vector.print()
+                    print("Hit: floor at: ", (hit_x, h_line))
                 return None, True
 
         # Vertical check for both walls
@@ -190,13 +230,18 @@ class BreakoutEnv(ABC):
 
         hit_y = vector.getY(v_line)
         if (hit_y >= (-1 / 3.5) and hit_y <= (8 / 3.5)):
-            toRet = copy.deepcopy(vector)
-            toRet.src_t += vector.getTFromY(hit_y)
+            toRet = vector.clone()
+            toRet.src_t += abs(vector.getTFromY(hit_y))
             toRet.bounceX(v_line)
             toRet.rebaseY(hit_y)
+            vector.src_t = toRet.src_t
+            if (debug):
+                vector.print()
+                print("Hit wall at: ", (v_line, hit_y))
+                toRet.print()
+            return toRet, False
 
-        vector.src_t = toRet.src_t
-        return toRet, False
+        assert False
         
     @abstractmethod
     def getInput(self):
@@ -221,6 +266,7 @@ class BreakoutEnv(ABC):
 
     def run(self):
         # Game loop
+        self.init()
         gameOver = False
         while (not gameOver):
             self.step()

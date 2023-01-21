@@ -4,6 +4,7 @@ import pygame
 import numpy as np
 import sys
 from BreakoutEnv import BreakoutEnv
+from utils import Vector, Parametric
 
 class GraphicsEnv(BreakoutEnv):
     def __init__(self, screenLength, skipAnim = True):
@@ -35,7 +36,11 @@ class GraphicsEnv(BreakoutEnv):
                     sys.exit()
             self.drawState()
             mousePos = pygame.mouse.get_pos()
-            self.drawAim(mousePos)
+            debug = pygame.mouse.get_pressed()[1]
+            self.drawAim(mousePos, debug)
+            if (debug):
+                print(" ")
+                pygame.time.wait(500)
             if (pygame.mouse.get_pressed()[0]):
                 running = False
             pygame.display.flip()
@@ -65,11 +70,54 @@ class GraphicsEnv(BreakoutEnv):
                 if (self.grid[x][7-y] != 0):
                     self.drawBlock((x, y))
 
-    def drawAim(self, pos):
-        midX = self.screenSize[0] / 2
-        x_pos = midX + midX * self.x
+    def drawAim(self, pos, debug=False):
+        if (debug):
+            print(pos)
+        angle = self.posToAngle(pos)
 
-        pygame.draw.line(self.screen, (255, 0, 0), (x_pos, self.screenSize[1]), pos)
+        # Angle is -90 to 90 degrees, mapped to -1 and 1
+        assert -1.0 <= angle and angle <= 1.0
+
+        # 90 degree angle will loop forever, terminate early
+        if angle == -1.0 or angle == 1.0:
+            return
+
+        if (debug):
+            print(angle)
+
+        # Convert input and starting x pos into a vector
+        vy = np.cos(np.deg2rad(angle*90))
+        vx = np.sin(np.deg2rad(angle*90))
+
+        vec = Vector(Parametric(vx, self.x), Parametric(vy, -1.0 / 3.5))
+
+        self.drawVectorPath(vec, debug)
+
+    def drawVectorPath(self, vec, debug=False):
+        hitsGround = False
+        vector = vec
+
+        i = 0
+
+        while (not hitsGround and i < 1000):
+            nextVector, hitsGround = self.nextCollision(vector, False, debug)
+
+            start_x = int((vector.x.base + 1) * self.screenSize[0] / 2)
+            start_y = self.screenSize[1] - int(((vector.y.base + 1 / 3.5) * 3.5 / 9)*self.screenSize[1])
+
+            if (hitsGround):
+                end_x = int((vector.getX(-1.0 / 3.5) + 1) * self.screenSize[0] / 2)
+                end_y = self.screenSize[1]
+            else:
+                end_x = int((nextVector.x.base + 1) * self.screenSize[0] / 2)
+                end_y = self.screenSize[1] - int(((nextVector.y.base + 1 / 3.5) * 3.5 / 9)*self.screenSize[1])
+                vector = nextVector
+
+            if (debug):
+                print("Draw line: ", (start_x, start_y), (end_x, end_y))
+                print(" ")
+            pygame.draw.line(self.screen, (255, 0, 0), (start_x, start_y), (end_x, end_y))
+            i += 1
 
     def observe(self):
         pygame.time.wait(500)
@@ -77,4 +125,4 @@ class GraphicsEnv(BreakoutEnv):
     def drawBlock(self, coord):
         pygame.draw.rect(self.screen, (255, 255, 255), pygame.Rect(coord[0]*self.blockLength, (coord[1] + 1)*self.blockLength, self.blockLength, self.blockLength))
         img = self.font.render(str(int(self.grid[coord[0], 7 - coord[1]])), True, (0, 0, 0))
-        self.screen.blit(img, (coord[0]*self.blockLength + self.blockLength/2, (coord[1] + 1)*self.blockLength + self.blockLength/2))
+        self.screen.blit(img, (coord[0]*self.blockLength + self.blockLength / 2 - img.get_width() / 2, (coord[1] + 1)*self.blockLength + self.blockLength / 2 - img.get_height() / 2))

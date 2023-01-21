@@ -1,3 +1,3 @@
 from GraphicsEnv import GraphicsEnv
 
-game = GraphicsEnv(2000)
+game = GraphicsEnv(1000)

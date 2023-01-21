@@ -6,6 +6,8 @@ class Parametric():
 
     def getT(self, val):
         # Get t value of given position
+        if (self.slope == 0):
+            return float("inf")
         return (val - self.base)/self.slope
 
     def func(self, t):
@@ -25,11 +27,11 @@ class Vector():
 
     def getTFromX(self, x):
         # Get t from x pos
-        return abs(self.x.getT(x))
+        return self.x.getT(x)
     
     def getTFromY(self, y):
         # Get t from y pos
-        return abs(self.y.getT(y))
+        return self.y.getT(y)
 
     def getY(self, x):
         # Get y pos from x pos
@@ -56,3 +58,16 @@ class Vector():
     def rebaseY(self, base):
         # Update base of y equation
         self.y.base = base
+
+    def getDist(self, pos):
+        return ((pos[0] - self.x.base)**2 + (pos[1] - self.y.base)**2)**0.5
+
+    def print(self):
+        print("vx: ", self.x.slope, " bx: ", self.x.base, " vy: ", self.y.slope, " by: ", self.y.base)
+
+    def clone(self):
+        toRet = Vector(Parametric(self.x.slope, self.x.base), Parametric(self.y.slope, self.y.base))
+        toRet.balls = self.balls
+        toRet.src_t = self.src_t
+        toRet.contact_x = self.contact_x
+        return toRet
